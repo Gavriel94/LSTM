@@ -1,0 +1,9 @@
+Data/Unprocessed
+Data/Processed
+.DS_Store
+GloVe
+Data/Split Datasets/data_1.csv
+Data/Split Datasets/data_2.csv
+Data/Split Datasets/data_3.csv
+Data/Split Datasets/data_4.csv
+Data/processed_data.csv
