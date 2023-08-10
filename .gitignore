@@ -7,3 +7,5 @@ Data/Split Datasets/data_2.csv
 Data/Split Datasets/data_3.csv
 Data/Split Datasets/data_4.csv
 Data/processed_data.csv
+Data/Split Datasets/min_rep_data
+checkpoint.pth
