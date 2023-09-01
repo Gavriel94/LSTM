@@ -1,5 +1,7 @@
 from torch import nn
 import torch
+import time 
+import wandb
 
 class LSTM_Model(nn.Module):
     """
@@ -7,6 +9,11 @@ class LSTM_Model(nn.Module):
         a textual input sequence.
     Extracts data from an input sequence via LSTM modules before the 
         classifier determines an output.
+
+    `train()`: used to train the model for a specified number of epochs. 
+    `evaluate()`: Forward pass on validation or test data 
+        without updating parameters.
+    `model_env()` executes both functions.
 
     Args:
         nn (nn.Module): Base class for PyTorch neural networks.
@@ -31,7 +38,7 @@ class LSTM_Model(nn.Module):
                     num_hidden_nodes*2,
                     hidden_layers,
                     bidirectional=False,
-                    dropout=0,
+                    dropout=0.1,
                     batch_first=True)
 
         self.lstm2 = nn.LSTM(num_hidden_nodes*2,
@@ -41,16 +48,22 @@ class LSTM_Model(nn.Module):
                     dropout=0,
                     batch_first=True)
         
-        self.linear1 = nn.Linear(num_hidden_nodes*4, 32)
-        self.linear1_batch_norm = nn.BatchNorm1d(32)
+        self.fc1 = nn.Linear(num_hidden_nodes*4, 32)
+        self.fc1_bn = nn.BatchNorm1d(32)
+        self.fc1_d = nn.Dropout(0.25)
 
-        self.linear2 = nn.Linear(32, 16)
-        self.linear2_batch_norm = nn.BatchNorm1d(16)
+        self.fc2 = nn.Linear(32, 16)
+        self.fc2_bn = nn.BatchNorm1d(16)
+        self.fc2_d = nn.Dropout(0.25)
         
-        self.linear3 = nn.Linear(16, 1)
+        self.fc3 = nn.Linear(16, 8)
+        self.fc3_bn = nn.BatchNorm1d(8)
+        self.fc3_d = nn.Dropout(0.25)
+
+        self.fc4 = nn.Linear(8, 1)
 
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.25)
+        
     
     def forward(self, text, text_lengths):
         """
@@ -70,7 +83,195 @@ class LSTM_Model(nn.Module):
         x, _ = self.lstm1(embeddings)
         x, _ = self.lstm2(x)
         x = x[torch.arange(x.shape[0]), text_lengths-1, :]
-        x = self.relu(self.dropout(self.linear1_batch_norm(self.linear1(x))))
-        x = self.relu(self.dropout(self.linear2_batch_norm(self.linear2(x))))
-        x = self.linear3(x)
+        x = self.relu(self.fc1_d(self.fc1_bn(self.fc1(x))))
+        x = self.relu(self.fc2_d(self.fc2_bn(self.fc2(x))))
+        x = self.relu(self.fc3_d(self.fc3_bn(self.fc3(x))))
+        x = self.fc4(x)
         return x 
+    
+    def __train(self,
+              dataloader, 
+              model, 
+              optimizer, 
+              scheduler, 
+              criterion, 
+              verbose=True):
+        """
+        Used to train a neural network.
+        Iterates through label/text pairs from each dataset making label
+        predictions. 
+        Calculates loss and backpropagates parameter updates
+        through the network to ideally reduce loss over epochs.
+
+        Args:
+            dataloader (DataLoader): DataLoader containing training
+                data.
+            model (nn.Module): The LSTM model being trained.
+            optimizer (torch.optim.Adam): Backpropagation method.
+            criterion (torch.nn.modules.loss): Loss function.
+            verbose (bool): Display metrics (default=True).
+
+        Returns:
+            epoch_loss, epoch_accuracy, current_lr 
+                (float, float, float): 
+                normalised loss, normalised accuracy and current lr.
+        """
+        model.train()
+        # Accuracy and loss accumulated over epoch
+        total_accuracy, total_loss = 0, 0
+        # Number of predictions
+        num_predictions = 0
+        # Displays training metrics every quarter of epoch
+        intervals = (len(dataloader) / 4).__round__()
+        for idx, (label, text, text_lengths) in enumerate(dataloader):
+            # Make prediction
+            prediction = model(text, text_lengths)
+            label = label.unsqueeze(1)
+            # Calculate loss
+            loss = criterion(prediction, label.float())
+            batch_loss = loss.item()
+            # Update weights
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            # Store metrics
+            total_accuracy += ((prediction > 0.5) == label).sum().item()
+            total_loss += batch_loss
+            num_predictions += label.size(0)
+
+            if verbose and idx % intervals == 0 and idx > 0:
+                epoch_metrics = (
+                    f'| {idx:5} / {len(dataloader):5} batches |' 
+                    f' {(total_accuracy/num_predictions)*100:.8f}% accurate |'
+                    )
+                print(epoch_metrics)
+        scheduler.step()
+        current_lr = scheduler.get_last_lr()[0]
+        average_accuracy_pct = (total_accuracy / num_predictions) * 100
+        average_loss_per_sample = total_loss / num_predictions
+        return average_loss_per_sample, average_accuracy_pct, current_lr
+
+    def __evaluate(self, dataloader, model, criterion):
+        """
+        Used to evaluate model training.
+        Works similarly to the training method, allowing the model
+        to make predictions on labelled data, however no parameters are
+        updated.
+
+        Args:
+            dataloader (DataLoader): Data for evaluation.
+            model (nn.Module): The LSTM model being trained.
+            criterion (torch.nn.modules.loss): Loss function.
+
+        Returns:
+            batch_loss, batch_accuracy, batch_count 
+                (float, float): normalised loss and normalised accuracy.
+        """
+        model.eval()
+        total_accuracy = 0
+        num_predictions = 0
+        total_loss = 0
+        with torch.no_grad():
+            for idx, (label, text, text_length) in enumerate(dataloader):
+                prediction = model(text, text_length)
+                label = label.unsqueeze(1)
+                loss = criterion(prediction, label.float())
+                total_accuracy += ((prediction > 0.5) == label).sum().item()
+                num_predictions += label.size(0)
+                total_loss += loss.item()
+        average_accuracy_pct = (total_accuracy / num_predictions) * 100
+        average_loss_per_sample = total_loss / num_predictions
+        return average_loss_per_sample, average_accuracy_pct
+
+    def run_training(self, 
+                     training, 
+                     validation, 
+                     testing, 
+                     model, 
+                     optimizer,
+                     scheduler, 
+                     criterion, 
+                     epochs, 
+                     verbose=True,
+                     wandb_track=True):
+        """
+        Wraps the training and evaluation functions in one method.
+        At the end of each epoch, the model asseses the validation set.
+        Once all epochs are complete performance is assesed on the test set.
+
+        Args:
+            training (DataLoader): DataLoader with training data.
+            validation (DataLoader): DataLoader with validation data.
+            testing (DataLoader): DataLoader with testing data.
+            model (nn.Module): The LSTM model being trained.
+            optimizer (torch.optim.Adam): Backpropagation method.
+            criterion (torch.nn.modules.loss): Loss function.
+            epochs (int): Number of epochs the model is trained for.
+            verbose (bool): Display metrics (default=True).
+            wandb_track (bool): Track metrics with wandb (default=True).
+
+        Returns:
+            train_accuracy, train_loss, val_accuracy, val_loss 
+                (list, list, list, list): Metrics saved during training and
+                evaluation.
+        """
+        # Containers for training and evaluation metrics
+        train_accuracy = []
+        train_loss = []
+        val_accuracy = []
+        val_loss = []
+        # Time saved for calculating final processing time
+        start_time = time.time()
+        for epoch in range(epochs):
+            epoch_start = time.time()
+            print('-' * 49)
+            print(f'|\t\t     Epoch {epoch + 1}      \t\t|')
+            print('-' * 49)
+            # Process training data
+            t_loss, t_acc, learning_rate = self.__train(training, 
+                                    model, 
+                                    optimizer,
+                                    scheduler, 
+                                    criterion, 
+                                    verbose)  
+            # Store training metrics
+            train_loss.append(t_loss)
+            train_accuracy.append(t_acc)
+            # Evaluate validation data
+            v_loss, v_acc = self.__evaluate(validation, model, criterion)
+            # Store evaluation metrics
+            val_loss.append(v_loss)
+            val_accuracy.append(v_acc)
+            # Log metrics to wandb
+
+            print('-' * 49)
+            print(f'| Validation Accuracy   : {v_acc:.8f}% accurate |')
+            print('-' * 49)
+            print(f'| Time Elapsed\t\t: {time.time() - epoch_start:.2f} seconds\t\t|')
+            print('-' * 49)
+            print()
+            if wandb_track:
+                wandb.log({
+                'Epoch': epoch,
+                'Training Accuracy': t_acc,
+                'Training Loss': t_loss,
+                'Validation Accuracy': v_acc, 
+                'Validation Loss': v_loss,
+                'Learning Rate': learning_rate
+                })
+
+        # Assess model performance on test data
+        _, test_acc = self.__evaluate(testing, model, criterion)
+        total_minutes = (time.time() - start_time).__round__()/60
+        print('*' + '-' * 47 + '*')
+        test_metrics = (
+            f'*\t\tEvaluating Test Data\t\t*\n'
+            f'*' + '-' * 47 + '*\n'
+            f'* Test Accuracy\t\t: {test_acc:.8f}% accurate *\n'
+            f'* Total Training Time\t: {total_minutes:.2f} minutes  \t*'
+        )
+        print(test_metrics)
+        print('*' + '-' * 47 + '*')
+        if wandb_track:
+                wandb.finish()
+        return train_accuracy, train_loss, val_accuracy, val_loss
