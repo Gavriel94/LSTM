@@ -70,4 +70,3 @@ def print_model_details(model, architecture=False, param_list=False):
 
 def num_params(model):
     return sum(p.numel() for p in model.parameters())
-    
