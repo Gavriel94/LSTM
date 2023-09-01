@@ -56,7 +56,7 @@ class DisplayDetails:
         if architecture:
             print(model, '\n')
         print(f'{num_weights} weights.')
-        print(f'{num_biases} biases.\n')
+        print(f'{num_biases} biases.')
         print(f'{total_params} trainable parameters, (weights + biases).')
         if param_list:
             params = [
