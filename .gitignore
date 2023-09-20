@@ -23,3 +23,4 @@ Data/Split Datasets/min_rep_data
 checkpoint.pth
 wandb
 __pychache__/
+__pycache__/*
