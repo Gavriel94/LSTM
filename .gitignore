@@ -24,3 +24,4 @@ checkpoint.pth
 wandb
 __pychache__/
 __pycache__/*
+.vscode/settings.json
