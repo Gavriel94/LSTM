@@ -20,8 +20,14 @@ def plot_metrics(t_metric, v_metric, metric):
     plt.ylabel(f'{metric.title()}')
     plt.xlabel('Epoch')
     plt.title(f'Average {metric.title()}')
-    plt.xticks(range(0, len(t_metric)), [
-        str(i+1) for i in range(len(t_metric))
+    num_epochs = len(t_metric)
+    if num_epochs <= 10:
+        plt.xticks(range(num_epochs), [
+            str(i+1) for i in range(num_epochs)
+            ])
+    else:
+        plt.xticks(range(num_epochs), [
+            str(i+1) for i in range(num_epochs) if i % 10 == 0
         ])
     plt.legend()
     plt.show()
@@ -68,5 +74,5 @@ def print_model_details(model, architecture=False, param_list=False):
             print('\n', param[0])
             print(param[1])
 
-def num_params(model):
+def get_num_params(model):
     return sum(p.numel() for p in model.parameters())
