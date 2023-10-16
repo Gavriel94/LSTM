@@ -1,27 +1,8 @@
-Data/Unprocessed
-Data/Processed
+Data
 .DS_Store
 GloVe
-Data/Split Datasets/data_1.csv
-Data/Split Datasets/data_2.csv
-Data/Split Datasets/data_3.csv
-Data/Split Datasets/data_4.csv
-Data/Split Datasets/data_5.csv
-Data/Split Datasets/data_6.csv
-Data/Split Datasets/data_7.csv
-Data/Split Datasets/data_8.csv
-Data/Split Datasets/data_9.csv
-Data/Split Datasets/data_10.csv
-Data/Split Datasets/data_11.csv
-Data/Split Datasets/data_12.csv
-Data/Split Datasets/data_13.csv
-Data/Split Datasets/data_14.csv
-Data/Split Datasets/data_15.csv
-Data/Split Datasets/data_16.csv
-Data/processed_data.csv
-Data/Split Datasets/min_rep_data
 checkpoint.pth
 wandb
-__pychache__/
+__pychache__
 __pycache__/*
-.vscode/settings.json
+.vscode
