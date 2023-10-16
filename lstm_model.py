@@ -38,7 +38,7 @@ class LSTM_Model(nn.Module):
                             hidden_size=input_dim*2,
                             num_layers=3,
                             batch_first=True,
-                            dropout=0.1,
+                            dropout=0,
                             bidirectional=True)
         
         self.classifier = nn.Sequential(
@@ -263,7 +263,7 @@ class LSTM_Model(nn.Module):
             print('*' + '-' * 32 + '*')
             print(f'| Test Accuracy         : {average_accuracy_pct:.2f}% |')
             print('*' + '-' * 32 + '*')
-            print(f'| Training Time         : {round((time.time() - start_time)/60)}m |')
+            print(f'| Training Time         : {round((time.time() - start_time)/60)}m  |')
         print('-' * 34)
         print()
         return average_loss_per_sample, average_accuracy_pct
