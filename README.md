@@ -8,4 +8,4 @@ LSTMs were introduced to overcome this by carrying a representation of the seque
 
 The model is has around 3 million trainable parameters and takes a while to train. The corpora has been split into 16 datasets so the model can be trained periodically, one subset at a time.
 
-This notebook is an explortation of the LSTM model and also data science aspects of handling, preprocessing and training a model on a large dataset of almost 1.8 million tweets.
+This notebook is an exploration of the LSTM model and also data science aspects of handling, preprocessing and training a model on a large dataset of almost 1.8 million tweets.
