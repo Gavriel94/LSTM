@@ -36,19 +36,20 @@ class LSTM_Model(nn.Module):
 
         self.lstm = nn.LSTM(input_size=input_dim,
                             hidden_size=input_dim*2,
-                            num_layers=5,
+                            num_layers=3,
                             batch_first=True,
-                            dropout=0,
+                            dropout=0.1,
                             bidirectional=True)
-
-        self.fc1 = nn.Linear(input_dim*4, input_dim*2)
-
-        self.fc2 = nn.Linear(input_dim*2, round(input_dim/2))
-
-        self.fc3 = nn.Linear(round(input_dim/2), 1)
-
-        self.tanh = nn.Tanh()
-        self.dropout = nn.Dropout(0.2)
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(input_dim*4, input_dim*2),
+            nn.Dropout(0.1),
+            nn.Tanh(),
+            nn.Linear(input_dim*2, round(input_dim/2)),
+            nn.Dropout(0.1),
+            nn.Tanh(),
+            nn.Linear(round(input_dim/2), 1)
+        )
         
     def forward(self, text, text_lengths):
         """
@@ -68,12 +69,8 @@ class LSTM_Model(nn.Module):
         
         x, _ = self.lstm(embeddings)
         x = x[torch.arange(x.shape[0]), text_lengths-1, :]
-
-        x = self.tanh(self.dropout(self.fc1(x)))
-        x = self.tanh(self.dropout(self.fc2(x)))
-        x = self.fc3(x)
-        
-        return x 
+        x = self.classifier(x)
+        return x
 
     def run_training(self, 
                      training, 
@@ -116,9 +113,9 @@ class LSTM_Model(nn.Module):
         start_time = time.time()
         for epoch in range(epochs):
             epoch_start = time.time()
-            print('-' * 49)
-            print(f'|\t\t     Epoch {epoch + 1}      \t\t|')
-            print('-' * 49)
+            print('-' * 34)
+            print(f'|             Epoch {epoch + 1:<2}           |')
+            print('-' * 34)
             # Process training data
             t_loss, t_acc, learning_rate = self.__train(training, 
                                     model, 
@@ -130,18 +127,16 @@ class LSTM_Model(nn.Module):
             train_loss.append(t_loss)
             train_accuracy.append(t_acc)
             # Evaluate validation data
-            v_loss, v_acc = self.__evaluate(validation, model, criterion)
+            v_loss, v_acc = self.__evaluate(validation, 
+                                            model, 
+                                            criterion,
+                                            epoch_start,
+                                            test_data=False)
             # Store evaluation metrics
             val_loss.append(v_loss)
             val_accuracy.append(v_acc)
             # Log metrics to wandb
-
-            print('-' * 49)
-            print(f'| Validation Accuracy   : {v_acc:.8f}% accurate |')
-            print('-' * 49)
-            print(f'| Time Elapsed\t\t: {time.time() - epoch_start:.2f} seconds\t|')
-            print('-' * 49)
-            print()
+            
             if wandb_track:
                 wandb.log({
                 'Epoch': epoch,
@@ -153,17 +148,12 @@ class LSTM_Model(nn.Module):
                 })
 
         # Assess model performance on test data
-        _, test_acc = self.__evaluate(testing, model, criterion)
-        total_minutes = (time.time() - start_time).__round__()/60
-        print('*' + '-' * 47 + '*')
-        test_metrics = (
-            '*\t\tEvaluating Test Data\t\t*\n'
-            '*' + '-' * 47 + '*\n'
-            f'* Test Accuracy\t\t: {test_acc:.8f}% accurate *\n'
-            f'* Total Training Time\t: {total_minutes:.2f} minutes  \t*'
-        )
-        print(test_metrics)
-        print('*' + '-' * 47 + '*')
+        self.__evaluate(testing, 
+                        model, 
+                        criterion, 
+                        start_time, 
+                        test_data=True)
+
         if wandb_track:
                 wandb.finish()
         return train_accuracy, train_loss, val_accuracy, val_loss
@@ -221,7 +211,7 @@ class LSTM_Model(nn.Module):
             if verbose and idx % intervals == 0 and idx > 0:
                 epoch_metrics = (
                     f'| {idx:5} / {len(dataloader):5} batches |' 
-                    f' {(total_accuracy/num_predictions)*100:.8f}% accurate |'
+                    f' {(total_accuracy/num_predictions)*100:.2f}% |'
                     )
                 print(epoch_metrics)
         scheduler.step()
@@ -230,7 +220,7 @@ class LSTM_Model(nn.Module):
         average_loss_per_sample = total_loss / num_predictions
         return average_loss_per_sample, average_accuracy_pct, current_lr
 
-    def __evaluate(self, dataloader, model, criterion):
+    def __evaluate(self, dataloader, model, criterion, start_time, test_data):
         """
         Used to evaluate model training.
         Works similarly to the training method, allowing the model
@@ -238,9 +228,10 @@ class LSTM_Model(nn.Module):
         updated.
 
         Args:
-            dataloader (DataLoader): Data for evaluation.
+            datalxoader (DataLoader): Data for evaluation.
             model (nn.Module): The LSTM model being trained.
             criterion (torch.nn.modules.loss): Loss function.
+            start)_time (time)
 
         Returns:
             batch_loss, batch_accuracy, batch_count 
@@ -258,6 +249,21 @@ class LSTM_Model(nn.Module):
                 total_accuracy += ((prediction > 0.5) == label).sum().item()
                 num_predictions += label.size(0)
                 total_loss += loss.item()
+                
         average_accuracy_pct = (total_accuracy / num_predictions) * 100
         average_loss_per_sample = total_loss / num_predictions
+        
+        
+        if not test_data:
+            print('-' * 34)
+            print(f'| Validation Accuracy   : {average_accuracy_pct:.2f}% |')
+            print('-' * 34)
+            print(f'| Time Elapsed          : {time.time() - start_time:.2f}s |')
+        else:    
+            print('*' + '-' * 32 + '*')
+            print(f'| Test Accuracy         : {average_accuracy_pct:.2f}% |')
+            print('*' + '-' * 32 + '*')
+            print(f'| Training Time         : {round((time.time() - start_time)/60)}m |')
+        print('-' * 34)
+        print()
         return average_loss_per_sample, average_accuracy_pct
